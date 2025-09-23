@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Relationship;
 use App\Models\Contact;
 use App\Models\Address;
+use Carbon\Carbon;
 
 class ClientDataProcessorService
 {
@@ -40,8 +41,8 @@ class ClientDataProcessorService
             ],
             [
                 'name' => $infoGeneral['fullname'] ?? null,
-                'birth' => !empty($infoGeneral['dateOfBirth']) ? date('Y-m-d', strtotime($infoGeneral['dateOfBirth'])) : null,
-                'death' => !empty($infoGeneral['dateOfDeath']) ? date('Y-m-d', strtotime($infoGeneral['dateOfDeath'])) : null,
+                'birth' => ($infoGeneral['dateOfBirth'] != '') ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfBirth'])->format('Y-m-d') : null,
+                'death' => !empty($infoGeneral['dateOfDeath']) ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfDeath'])->format('Y-m-d') : null,
                 'gender' => $infoGeneral['gender'] ?? null,
                 'state_civil' => $infoGeneral['civilStatus'] ?? null,
                 'place_birth' => $infoGeneral['placeOfBirth'] ?? null,
@@ -125,7 +126,7 @@ class ClientDataProcessorService
 
     protected function parseDate(string $date): ?string
     {
-        return !empty($date) ? date('Y-m-d', strtotime($date)) : null;
+        return !empty($date) ? Carbon::createFromFormat('d/m/Y', $date)->format('Y-m-d') : null;
     }
 
 }
