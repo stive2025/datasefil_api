@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\ClientDataProcessorService;
 use DateTime;
+use Illuminate\Support\Facades\Log;
 
 class ClientController extends Controller
 {
@@ -94,6 +95,8 @@ class ClientController extends Controller
             $datadiver=new DatadiverService(env('ROOT_DATADIVERSERVICE').request('identification'));
             $contacts=$datadiver->ConsultData();
 
+            Log::info(json_encode($contacts));
+
             $processor = ClientDataProcessorService::createClientFromDatadiver($contacts);
             $processor->processDatadiverData($contacts);
 
@@ -124,7 +127,7 @@ class ClientController extends Controller
             $processor->processDatadiverData($contactsData);
         }
 
-        $id->load(['contacts', 'address', 'parents']);
+        $id->load(['contacts', 'address', 'parents','works']);
 
         return response()->json($id, 200);
     }

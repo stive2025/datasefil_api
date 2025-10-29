@@ -22,6 +22,16 @@ class ContactController extends Controller
         return response()->json($contacts,200);
     }
 
+    public function update(Request $request,string $id){
+        $contact=Contact::findOrFail($id);
+        if($contact){
+            $contact->update($request->all());
+            return response()->json($contact,200);
+        }else{
+            return response()->json(["message"=>"Contact no encontrado"],200);
+        }
+    }
+
     /**
      * Store a newly created resource in storage.
      */

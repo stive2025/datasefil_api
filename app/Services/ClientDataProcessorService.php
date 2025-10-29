@@ -6,6 +6,7 @@ use App\Models\Client;
 use App\Models\Relationship;
 use App\Models\Contact;
 use App\Models\Address;
+use App\Models\Work;
 use Carbon\Carbon;
 
 class ClientDataProcessorService
@@ -13,7 +14,7 @@ class ClientDataProcessorService
     /**
      * Create a new class instance.
      */
-    public function __construct(protected Client $client){}
+    public function __construct(protected Client $client) {}
 
     public function processDatadiverData(array $data): void
     {
@@ -22,12 +23,14 @@ class ClientDataProcessorService
         $genomeData = $data['info_family']['family'] ?? [];
         $contacts = $data['info_contacts']['phones'] ?? [];
         $addresses = $data['info_contacts']['address'] ?? [];
+        $works = $data['info_labour']['jobInfoCompany'] ?? [];
 
         //$this->processClient($infoGeneral);
         $this->processFamilyData($familyData);
         $this->processFamilyData($genomeData);
         $this->processContacts($contacts);
         $this->processAddresses($addresses);
+        $this->processLabours($works);
     }
 
     public static function createClientFromDatadiver(array $data): self
@@ -55,24 +58,25 @@ class ClientDataProcessorService
         return new self($client);
     }
 
-    protected function processClient(array $client) : void{
-        $create_client=Client::updateOrCreate(
-        [
-                        'identification'=>$client['dni'],
-                        "name"=>$client['name']
-                    ],
+    protected function processClient(array $client): void
+    {
+        $create_client = Client::updateOrCreate(
             [
-                        'name'=>$client['fullname'],
-                        'birth' => !empty($client['dateOfBirth']) ? date('Y-m-d', strtotime($client['dateOfBirth'])) : null,
-                        'death' => !empty($client['dateOfDeath']) ? date('Y-m-d', strtotime($client['dateOfDeath'])) : null,
-                        'gender'=>$client['gender'],
-                        'state_civil'=>$client['civilStatus'],
-                        'place_birth'=>$client['placeOfBirth'],
-                        'nationality'=>$client['citizenship'],
-                        'profession'=>$client['profession'],
-                        'salary'=>$client['salary']
-                    ]
-                );
+                'identification' => $client['dni'],
+                "name" => $client['name']
+            ],
+            [
+                'name' => $client['fullname'],
+                'birth' => !empty($client['dateOfBirth']) ? date('Y-m-d', strtotime($client['dateOfBirth'])) : null,
+                'death' => !empty($client['dateOfDeath']) ? date('Y-m-d', strtotime($client['dateOfDeath'])) : null,
+                'gender' => $client['gender'],
+                'state_civil' => $client['civilStatus'],
+                'place_birth' => $client['placeOfBirth'],
+                'nationality' => $client['citizenship'],
+                'profession' => $client['profession'],
+                'salary' => $client['salary']
+            ]
+        );
     }
 
     protected function processFamilyData(array $family): void
@@ -81,7 +85,7 @@ class ClientDataProcessorService
             if (empty($person['dni'])) continue;
 
             $existingPerson = Client::firstOrCreate(
-                ['identification' => $person['dni'],'name' => $person['fullname']],
+                ['identification' => $person['dni'], 'name' => $person['fullname']],
                 [
                     'name' => $person['fullname'],
                     'birth' => $this->parseDate($person['dateOfBirth'] ?? ''),
@@ -124,9 +128,30 @@ class ClientDataProcessorService
         }
     }
 
+    protected function processLabours(array $labours): void
+    {
+        foreach ($labours as $labour) {
+            Work::create([
+                'type' => 'JOB',
+                'address' => $labour['address'],
+                'province' => '',
+                'ruc' => $labour['ruc'],
+                'activities_start_date' => $labour['admissionDate'],
+                'suspension_request_date' => $labour['fireDate'],
+                'legal_name' => $labour['legalName'],
+                'activities_restart_date' => '',
+                'phone' => $labour['phone'],
+                'taxpayer_status' => '',
+                'email' => $labour['email'],
+                'economic_activity' => $labour['position'],
+                'business_name' => $labour['legalName'],
+                'client_id' => $this->client->id
+            ]);
+        }
+    }
+
     protected function parseDate(string $date): ?string
     {
         return !empty($date) ? Carbon::createFromFormat('d/m/Y', $date)->format('Y-m-d') : null;
     }
-
 }

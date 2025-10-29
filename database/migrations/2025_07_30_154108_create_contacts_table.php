@@ -15,6 +15,8 @@ return new class extends Migration
             $table->id();
             $table->string('phone_number');
             $table->string('phone_type');
+            $table->integer('counter_correct_number');
+            $table->integer('counter_incorrect_number');
             $table->foreignId('client_id');
             $table->foreign('client_id')
                 ->references('id')

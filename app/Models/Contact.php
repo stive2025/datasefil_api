@@ -12,7 +12,9 @@ class Contact extends Model
 
     protected $fillable=[
         'phone_number',
-        'client_id'
+        'client_id',
+        'counter_correct_number',
+        'counter_incorrect_number'
     ];
 
     public function client()
