@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  # Servicio de la aplicación Laravel (Producción)
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    image: datasefil-app:production
+    container_name: datasefil-app-prod
+    restart: always
+    working_dir: /var/www
+    networks:
+      - datasefil-network
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_CONNECTION=${DB_CONNECTION:-mysql}
+      - DB_HOST=${DB_HOST:-172.20.1.105}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_DATABASE=${DB_DATABASE:-datasefil}
+      - DB_USERNAME=${DB_USERNAME:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-root}
+
+  # Servicio Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: datasefil-nginx-prod
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+      # Solo montar el directorio public para archivos estáticos
+      - app-public:/var/www/public:ro
+    networks:
+      - datasefil-network
+    depends_on:
+      - app
+
+networks:
+  datasefil-network:
+    driver: bridge
+
+volumes:
+  app-public:

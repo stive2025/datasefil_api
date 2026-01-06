@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # Servicio de la aplicación Laravel
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: datasefil-app
+    container_name: datasefil-app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      # Montar el código local en el contenedor (sincronización en tiempo real)
+      - ./:/var/www
+      # Excluir vendor del volumen para mejor rendimiento
+      - /var/www/vendor
+      - /var/www/node_modules
+    environment:
+      - DB_CONNECTION=${DB_CONNECTION:-mysql}
+      - DB_HOST=${DB_HOST:-172.20.1.105}
+      - DB_PORT=${DB_PORT:-3306}
+      - DB_DATABASE=${DB_DATABASE:-datasefil}
+      - DB_USERNAME=${DB_USERNAME:-root}
+      - DB_PASSWORD=${DB_PASSWORD:-root}
+    networks:
+      - datasefil-network
+
+  # Servicio Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: datasefil-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/conf.d:/etc/nginx/conf.d
+    networks:
+      - datasefil-network
+    depends_on:
+      - app
+
+networks:
+  datasefil-network:
+    driver: bridge
