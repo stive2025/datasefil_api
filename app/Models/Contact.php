@@ -16,7 +16,7 @@ class Contact extends Model
         'counter_correct_number',
         'counter_incorrect_number'
     ];
-
+    
     public function client()
     {
         return $this->belongsTo(Client::class);

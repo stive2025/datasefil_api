@@ -22,10 +22,46 @@ class ContactController extends Controller
         return response()->json($contacts,200);
     }
 
+    public function store(Request $request)
+    {
+        $contactExists=Contact::where('phone_number',$request->phone_number)
+            ->where('client_id',$request->client_id)
+            ->first();
+
+        if($contactExists){
+            return response()->json(["message"=>"El contacto ya existe"],409);
+        }
+
+        $contact=Contact::create([
+            "phone_number"=>$request->phone_number,
+            "client_id"=>$request->client_id,
+            "counter_correct_number"=>0,
+            "counter_incorrect_number"=>0
+        ]);
+        
+        return response()->json($contact,201);
+    }
+
     public function update(Request $request,string $id){
         $contact=Contact::findOrFail($id);
         if($contact){
             $contact->update($request->all());
+            return response()->json($contact,200);
+        }else{
+            return response()->json(["message"=>"Contact no encontrado"],200);
+        }
+    }
+
+    public function updateVerified(Request $request,string $id){
+        $contact=Contact::findOrFail($id);
+
+        if($contact){
+
+            $data = ($request->is_verified) ? 
+                ['counter_correct_number' => $contact->counter_correct_number + 1] : 
+                ['counter_incorrect_number' => $contact->counter_incorrect_number + 1];
+            
+            $contact->update($data);
             return response()->json($contact,200);
         }else{
             return response()->json(["message"=>"Contact no encontrado"],200);

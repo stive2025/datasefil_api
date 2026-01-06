@@ -44,6 +44,11 @@ class Client extends Model
         return $this->hasMany(Address::class);
     }
 
+    public function emails()
+    {
+        return $this->hasMany(Email::class);
+    }
+
     public function parents()
     {
         return $this->hasMany(Relationship::class);

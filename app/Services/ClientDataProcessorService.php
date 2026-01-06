@@ -44,7 +44,7 @@ class ClientDataProcessorService
             ],
             [
                 'name' => $infoGeneral['fullname'] ?? null,
-                'birth' => ($infoGeneral['dateOfBirth'] != '') ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfBirth'])->format('Y-m-d') : null,
+                'birth' => !empty($infoGeneral['dateOfBirth']) ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfBirth'])->format('Y-m-d') : null,
                 'death' => !empty($infoGeneral['dateOfDeath']) ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfDeath'])->format('Y-m-d') : null,
                 'gender' => $infoGeneral['gender'] ?? null,
                 'state_civil' => $infoGeneral['civilStatus'] ?? null,
@@ -88,7 +88,7 @@ class ClientDataProcessorService
                 ['identification' => $person['dni'], 'name' => $person['fullname']],
                 [
                     'name' => $person['fullname'],
-                    'birth' => $this->parseDate($person['dateOfBirth'] ?? ''),
+                    'birth' => $this->parseDate((!empty($person['dateOfBirth']) ? $person['dateOfBirth'] : '')),
                     'gender' => $person['gender'] ?? null,
                     'state_civil' => $person['civilStatus'] ?? null,
                     'nationality' => $person['citizenship'] ?? null
