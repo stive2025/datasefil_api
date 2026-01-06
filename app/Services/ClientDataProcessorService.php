@@ -118,15 +118,25 @@ class ClientDataProcessorService
                 );
             }
 
-            // Crear relación solo si no existe
+            // Crear relación solo si no existe ninguna relación entre estos dos clientes
             $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
 
-            $relationshipExists = Relationship::where('client_id', $this->client->id)
+            // Verificar si ya existe CUALQUIER relación entre estos dos clientes
+            $existingRelationship = Relationship::where('client_id', $this->client->id)
                 ->where('relationship_client_id', $existingPerson->id)
-                ->where('type', $relationshipType)
-                ->exists();
+                ->first();
 
-            if (!$relationshipExists) {
+            if ($existingRelationship) {
+                // Si ya existe una relación, verificar si la nueva es más prioritaria
+                $currentPriority = $this->getRelationshipPriority($existingRelationship->type);
+                $newPriority = $this->getRelationshipPriority($relationshipType);
+
+                // Solo actualizar si la nueva relación tiene mayor prioridad
+                if ($newPriority > $currentPriority) {
+                    $existingRelationship->update(['type' => $relationshipType]);
+                }
+            } else {
+                // No existe relación, crear una nueva
                 Relationship::create([
                     'type' => $relationshipType,
                     'relationship_client_id' => $existingPerson->id,
@@ -134,6 +144,58 @@ class ClientDataProcessorService
                 ]);
             }
         }
+    }
+
+    /**
+     * Determina la prioridad de una relación familiar
+     * Mayor número = mayor prioridad (relaciones más directas)
+     */
+    protected function getRelationshipPriority(string $relationshipType): int
+    {
+        $priorities = [
+            // Relaciones directas - máxima prioridad
+            'PADRE' => 100,
+            'MADRE' => 100,
+            'HIJO' => 100,
+            'HIJA' => 100,
+            'ESPOSO' => 100,
+            'ESPOSA' => 100,
+            'CONYUGE' => 100,
+            
+            // Hermanos - alta prioridad
+            'HERMANO' => 80,
+            'HERMANA' => 80,
+            
+            // Abuelos y nietos
+            'ABUELO' => 70,
+            'ABUELA' => 70,
+            'NIETO' => 70,
+            'NIETA' => 70,
+            
+            // Tíos y sobrinos
+            'TIO' => 50,
+            'TIA' => 50,
+            'TIO PATERNO' => 50,
+            'TIA PATERNA' => 50,
+            'TIO MATERNO' => 50,
+            'TIA MATERNA' => 50,
+            'SOBRINO' => 50,
+            'SOBRINA' => 50,
+            
+            // Primos
+            'PRIMO' => 30,
+            'PRIMA' => 30,
+            
+            // Otros
+            'SUEGRO' => 20,
+            'SUEGRA' => 20,
+            'YERNO' => 20,
+            'NUERA' => 20,
+            'CUÑADO' => 20,
+            'CUÑADA' => 20,
+        ];
+
+        return $priorities[$relationshipType] ?? 10; // Default priority para relaciones desconocidas
     }
 
     protected function processContacts(array $phones): void
