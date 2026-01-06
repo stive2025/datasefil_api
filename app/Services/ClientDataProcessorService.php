@@ -84,22 +84,55 @@ class ClientDataProcessorService
         foreach ($family as $person) {
             if (empty($person['dni'])) continue;
 
-            $existingPerson = Client::firstOrCreate(
-                ['identification' => $person['dni'], 'name' => $person['fullname']],
-                [
-                    'name' => $person['fullname'],
-                    'birth' => $this->parseDate((!empty($person['dateOfBirth']) ? $person['dateOfBirth'] : '')),
-                    'gender' => $person['gender'] ?? null,
-                    'state_civil' => $person['civilStatus'] ?? null,
-                    'nationality' => $person['citizenship'] ?? null
-                ]
-            );
+            // Para hijos menores que vienen con cédula del padre, buscamos solo por nombre y fecha de nacimiento
+            $isSameDniAsParent = $person['dni'] === $this->client->identification;
 
-            Relationship::firstOrCreate([
-                'type' => strtoupper($person['relationship'] ?? 'UNKNOWN'),
-                'relationship_client_id' => $existingPerson->id,
-                'client_id' => $this->client->id
-            ]);
+            if ($isSameDniAsParent && !empty($person['dateOfBirth'])) {
+                // Buscar por nombre y fecha de nacimiento para menores de edad
+                $existingPerson = Client::where('name', $person['fullname'])
+                    ->where('birth', $this->parseDate($person['dateOfBirth']))
+                    ->first();
+
+                if (!$existingPerson) {
+                    // Crear hijo sin cédula (será null o vacío)
+                    $existingPerson = Client::create([
+                        'identification' => null, // Menores de edad sin cédula
+                        'name' => $person['fullname'],
+                        'birth' => $this->parseDate($person['dateOfBirth']),
+                        'gender' => $person['gender'] ?? null,
+                        'state_civil' => $person['civilStatus'] ?? null,
+                        'nationality' => $person['citizenship'] ?? null
+                    ]);
+                }
+            } else {
+                // Proceso normal para personas con cédula propia
+                $existingPerson = Client::firstOrCreate(
+                    ['identification' => $person['dni']],
+                    [
+                        'name' => $person['fullname'],
+                        'birth' => $this->parseDate((!empty($person['dateOfBirth']) ? $person['dateOfBirth'] : '')),
+                        'gender' => $person['gender'] ?? null,
+                        'state_civil' => $person['civilStatus'] ?? null,
+                        'nationality' => $person['citizenship'] ?? null
+                    ]
+                );
+            }
+
+            // Crear relación solo si no existe
+            $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
+
+            $relationshipExists = Relationship::where('client_id', $this->client->id)
+                ->where('relationship_client_id', $existingPerson->id)
+                ->where('type', $relationshipType)
+                ->exists();
+
+            if (!$relationshipExists) {
+                Relationship::create([
+                    'type' => $relationshipType,
+                    'relationship_client_id' => $existingPerson->id,
+                    'client_id' => $this->client->id
+                ]);
+            }
         }
     }
 
