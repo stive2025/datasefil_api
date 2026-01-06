@@ -53,11 +53,6 @@ class Client extends Model
     {
         return $this->hasMany(Relationship::class);
     }
-
-    public function financials()
-    {
-        return $this->hasMany(Financial::class);
-    }
     
     public function getAgeAttribute()
     {

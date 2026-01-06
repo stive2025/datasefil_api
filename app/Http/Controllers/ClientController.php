@@ -74,7 +74,7 @@ class ClientController extends Controller
     
     public function index()
     {   
-        $contacts=Client::with(['contacts','parents.relatedClient','address','emails','financials'])
+        $contacts=Client::with(['contacts','parents.relatedClient','address','emails'])
             ->when(request()->filled('name'),function($query){
                 $query->where('name','REGEXP',request('name'));
             })
@@ -127,7 +127,7 @@ class ClientController extends Controller
             $processor->processDatadiverData($contactsData);
         }
 
-        $id->load(['contacts', 'address', 'parents','works','emails','financials']);
+        $id->load(['contacts', 'address', 'parents','works','emails']);
 
         return response()->json($id, 200);
     }
