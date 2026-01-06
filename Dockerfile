@@ -1,10 +1,6 @@
 # Dockerfile para Laravel 12 con PHP 8.2
 FROM php:8.2-fpm
 
-# Argumentos para configurar el usuario
-ARG user=laravel
-ARG uid=1000
-
 # Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     git \
@@ -24,26 +20,27 @@ RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 # Instalar Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# Crear usuario del sistema para ejecutar comandos Composer y Artisan
-RUN useradd -G www-data,root -u $uid -d /home/$user $user
-RUN mkdir -p /home/$user/.composer && \
-    chown -R $user:$user /home/$user
-
 # Configurar directorio de trabajo
 WORKDIR /var/www
 
-# Copiar el código de la aplicación primero
-COPY --chown=$user:$user . .
+# Copiar archivos de composer primero para aprovechar cache de Docker
+COPY composer.json composer.lock ./
 
-# Crear directorios necesarios con permisos correctos
-RUN mkdir -p /var/www/vendor /var/www/storage /var/www/bootstrap/cache && \
-    chown -R $user:www-data /var/www && \
-    chmod -R 775 /var/www/storage /var/www/bootstrap/cache
-
-# Instalar dependencias de PHP como usuario laravel
-USER $user
+# Instalar dependencias de PHP
 RUN composer install --optimize-autoloader --no-interaction
+
+# Copiar el resto del código
+COPY . .
+
+# Configurar permisos - esto se ejecutará cada vez que inicie el contenedor
+RUN chmod -R 777 storage bootstrap/cache || true
+
+# Crear script de inicio
+RUN echo '#!/bin/bash\n\
+chmod -R 777 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true\n\
+php-fpm' > /usr/local/bin/start.sh && \
+chmod +x /usr/local/bin/start.sh
 
 # Exponer puerto 9000 y ejecutar php-fpm
 EXPOSE 9000
-CMD ["php-fpm"]
+CMD ["/usr/local/bin/start.sh"]
