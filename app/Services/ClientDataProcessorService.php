@@ -36,14 +36,19 @@ class ClientDataProcessorService
     public static function createClientFromDatadiver(array $data): self
     {
         $infoGeneral = $data['info_general'] ?? [];
+        $fullname = $infoGeneral['fullname'] ?? null;
+        
+        // Detectar si es un menor usando cédula de padres
+        $usesParentId = preg_match('/menor\s+de\s+edad\s*\(.*\)/i', $fullname);
 
         $client = Client::updateOrCreate(
             [
                 'identification' => $infoGeneral['dni'] ?? null,
-                'name' => $infoGeneral['name'] ?? null,
             ],
             [
-                'name' => $infoGeneral['fullname'] ?? null,
+                'name' => $fullname,
+                'uses_parent_identification' => $usesParentId,
+                'parent_identification' => $usesParentId ? ($infoGeneral['dni'] ?? null) : null,
                 'birth' => !empty($infoGeneral['dateOfBirth']) ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfBirth'])->format('Y-m-d') : null,
                 'death' => !empty($infoGeneral['dateOfDeath']) ? Carbon::createFromFormat('d/m/Y', $infoGeneral['dateOfDeath'])->format('Y-m-d') : null,
                 'gender' => $infoGeneral['gender'] ?? null,
@@ -105,6 +110,8 @@ class ClientDataProcessorService
                     // Crear hijo sin cédula (incluso si el nombre es genérico como "Menor De Edad (Cedula Padres)")
                     $existingPerson = Client::create([
                         'identification' => null, // Menores de edad sin cédula
+                        'uses_parent_identification' => true,
+                        'parent_identification' => $this->client->identification,
                         'name' => $fullname,
                         'birth' => $this->parseDate($person['dateOfBirth']),
                         'gender' => $person['gender'] ?? null,

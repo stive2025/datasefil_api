@@ -12,6 +12,8 @@ class Client extends Model
     use HasFactory;
     protected $fillable=[
         'identification',
+        'uses_parent_identification',
+        'parent_identification',
         'name',
         'email',
         'micro_activa',
