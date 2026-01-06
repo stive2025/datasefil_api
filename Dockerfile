@@ -23,19 +23,19 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Configurar directorio de trabajo
 WORKDIR /var/www
 
-# Copiar archivos de composer primero para aprovechar cache de Docker
-COPY composer.json composer.lock ./
-
-# Instalar dependencias de PHP
-RUN composer install --optimize-autoloader --no-interaction
-
-# Copiar el resto del código
+# Copiar todo el código
 COPY . .
 
-# Configurar permisos - esto se ejecutará cada vez que inicie el contenedor
+# Instalar dependencias de PHP (sin scripts post-install durante el build)
+RUN composer install --optimize-autoloader --no-interaction --no-scripts
+
+# Ejecutar scripts de composer manualmente después de tener todo el código
+RUN composer run-script post-autoload-dump
+
+# Configurar permisos
 RUN chmod -R 777 storage bootstrap/cache || true
 
-# Crear script de inicio
+# Crear script de inicio que ajusta permisos en cada arranque
 RUN echo '#!/bin/bash\n\
 chmod -R 777 /var/www/storage /var/www/bootstrap/cache 2>/dev/null || true\n\
 php-fpm' > /usr/local/bin/start.sh && \
