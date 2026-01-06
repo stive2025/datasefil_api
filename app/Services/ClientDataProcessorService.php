@@ -86,26 +86,34 @@ class ClientDataProcessorService
 
             // Para hijos menores que vienen con cédula del padre, buscamos solo por nombre y fecha de nacimiento
             $isSameDniAsParent = $person['dni'] === $this->client->identification;
+            $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
 
-            if ($isSameDniAsParent && !empty($person['dateOfBirth'])) {
+            // Si la cédula es la misma que el padre y es una relación de hijo/hija, es un menor de edad sin cédula
+            $isMinor = $isSameDniAsParent && in_array($relationshipType, ['HIJO', 'HIJA']);
+
+            if ($isMinor && !empty($person['dateOfBirth'])) {
+                // Limpiar el nombre
+                $fullname = trim($person['fullname'] ?? '');
+
                 // Buscar por nombre y fecha de nacimiento para menores de edad
-                $existingPerson = Client::where('name', $person['fullname'])
+                $existingPerson = Client::where('name', $fullname)
                     ->where('birth', $this->parseDate($person['dateOfBirth']))
+                    ->whereNull('identification') // Solo buscar entre registros sin cédula
                     ->first();
 
                 if (!$existingPerson) {
-                    // Crear hijo sin cédula (será null o vacío)
+                    // Crear hijo sin cédula (incluso si el nombre es genérico como "Menor De Edad (Cedula Padres)")
                     $existingPerson = Client::create([
                         'identification' => null, // Menores de edad sin cédula
-                        'name' => $person['fullname'],
+                        'name' => $fullname,
                         'birth' => $this->parseDate($person['dateOfBirth']),
                         'gender' => $person['gender'] ?? null,
                         'state_civil' => $person['civilStatus'] ?? null,
                         'nationality' => $person['citizenship'] ?? null
                     ]);
                 }
-            } else {
-                // Proceso normal para personas con cédula propia
+            } elseif (!$isSameDniAsParent) {
+                // Proceso normal para personas con cédula propia (no es la misma que el padre)
                 $existingPerson = Client::firstOrCreate(
                     ['identification' => $person['dni']],
                     [
@@ -116,10 +124,16 @@ class ClientDataProcessorService
                         'nationality' => $person['citizenship'] ?? null
                     ]
                 );
+            } else {
+                // Si la cédula es la misma pero no es una relación hijo/hija, saltar
+                // (evita crear relaciones del cliente consigo mismo)
+                continue;
             }
 
-            // Crear relación solo si no existe ninguna relación entre estos dos clientes
-            $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
+            // Evitar crear relaciones del cliente consigo mismo
+            if ($existingPerson->id === $this->client->id) {
+                continue;
+            }
 
             // Verificar si ya existe CUALQUIER relación entre estos dos clientes
             $existingRelationship = Relationship::where('client_id', $this->client->id)
