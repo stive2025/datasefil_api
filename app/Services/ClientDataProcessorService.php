@@ -20,15 +20,19 @@ class ClientDataProcessorService
     {
         $infoGeneral = $data['info_general'] ?? [];
         $familyData = $infoGeneral['family'] ?? [];
+        $familyNames = $infoGeneral['familyName'] ?? [];
         $genomeData = $data['info_family']['family'] ?? [];
         $contacts = $data['info_contacts']['phones'] ?? [];
+        $emails = $data['info_contacts']['emails'] ?? [];
         $addresses = $data['info_contacts']['address'] ?? [];
         $works = $data['info_labour']['jobInfoCompany'] ?? [];
 
         //$this->processClient($infoGeneral);
+        $this->processFamilyNames($familyNames);
         $this->processFamilyData($familyData);
         $this->processFamilyData($genomeData);
         $this->processContacts($contacts);
+        $this->processEmails($emails);
         $this->processAddresses($addresses);
         $this->processLabours($works);
     }
@@ -84,25 +88,78 @@ class ClientDataProcessorService
         );
     }
 
+    protected function processFamilyNames(array $familyNames): void
+    {
+        // Procesar cónyuge
+        if (!empty($familyNames['spouse'])) {
+            $this->processFamilyData([[
+                'relationship' => 'conyuge',
+                'fullname' => $familyNames['spouse'],
+                'dni' => null, // No tenemos DNI en familyName
+            ]]);
+        }
+
+        // Procesar padre
+        if (!empty($familyNames['dad'])) {
+            $this->processFamilyData([[
+                'relationship' => 'padre',
+                'fullname' => $familyNames['dad'],
+                'dni' => null, // No tenemos DNI en familyName
+            ]]);
+        }
+
+        // Procesar madre
+        if (!empty($familyNames['mom'])) {
+            $this->processFamilyData([[
+                'relationship' => 'madre',
+                'fullname' => $familyNames['mom'],
+                'dni' => null, // No tenemos DNI en familyName
+            ]]);
+        }
+    }
+
     protected function processFamilyData(array $family): void
     {
         foreach ($family as $person) {
-            if (empty($person['dni'])) continue;
+            if (empty($person['dni']) && empty($person['fullname'])) continue;
 
             // Para hijos menores que vienen con cédula del padre, buscamos solo por nombre y fecha de nacimiento
-            $isSameDniAsParent = $person['dni'] === $this->client->identification;
+            $isSameDniAsParent = !empty($person['dni']) && $person['dni'] === $this->client->identification;
             $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
 
             // Si la cédula es la misma que el padre y es una relación de hijo/hija, es un menor de edad sin cédula
             $isMinor = $isSameDniAsParent && in_array($relationshipType, ['HIJO', 'HIJA']);
 
-            if ($isMinor && !empty($person['dateOfBirth'])) {
+            // Si no tiene DNI, buscar o crear por nombre
+            if (empty($person['dni'])) {
+                $fullname = trim($person['fullname'] ?? '');
+
+                if (empty($fullname)) continue;
+
+                // Buscar por nombre (puede haber duplicados, tomar el primero)
+                $existingPerson = Client::where('name', $fullname)
+                    ->whereNull('identification')
+                    ->first();
+
+                if (!$existingPerson) {
+                    $existingPerson = Client::create([
+                        'identification' => null,
+                        'name' => $fullname,
+                        'birth' => $this->parseDate($person['dateOfBirth'] ?? ''),
+                        'gender' => $person['gender'] ?? null,
+                        'state_civil' => $person['civilStatus'] ?? null,
+                        'nationality' => $person['citizenship'] ?? null
+                    ]);
+                }
+            } elseif ($isMinor && !empty($person['dateOfBirth'])) {
                 // Limpiar el nombre
                 $fullname = trim($person['fullname'] ?? '');
 
                 // Buscar por nombre y fecha de nacimiento para menores de edad
+                $birthDate = $this->parseDate($person['dateOfBirth']);
+
                 $existingPerson = Client::where('name', $fullname)
-                    ->where('birth', $this->parseDate($person['dateOfBirth']))
+                    ->where('birth', $birthDate)
                     ->whereNull('identification') // Solo buscar entre registros sin cédula
                     ->first();
 
@@ -113,7 +170,7 @@ class ClientDataProcessorService
                         'uses_parent_identification' => true,
                         'parent_identification' => $this->client->identification,
                         'name' => $fullname,
-                        'birth' => $this->parseDate($person['dateOfBirth']),
+                        'birth' => $birthDate,
                         'gender' => $person['gender'] ?? null,
                         'state_civil' => $person['civilStatus'] ?? null,
                         'nationality' => $person['citizenship'] ?? null
@@ -124,8 +181,8 @@ class ClientDataProcessorService
                 $existingPerson = Client::firstOrCreate(
                     ['identification' => $person['dni']],
                     [
-                        'name' => $person['fullname'],
-                        'birth' => $this->parseDate((!empty($person['dateOfBirth']) ? $person['dateOfBirth'] : '')),
+                        'name' => $person['fullname'] ?? 'SIN NOMBRE',
+                        'birth' => $this->parseDate($person['dateOfBirth'] ?? ''),
                         'gender' => $person['gender'] ?? null,
                         'state_civil' => $person['civilStatus'] ?? null,
                         'nationality' => $person['citizenship'] ?? null
@@ -233,34 +290,61 @@ class ClientDataProcessorService
     protected function processAddresses(array $addresses): void
     {
         foreach ($addresses as $addr) {
-            Address::create([
-                'address' => $addr['address'],
-                'type' => $addr['type'],
-                'province' => $addr['province'],
-                'city' => $addr['city'],
-                'is_valid' => 'NO',
-                'client_id' => $this->client->id
-            ]);
+            if (empty($addr['address'])) continue;
+
+            Address::firstOrCreate(
+                [
+                    'address' => $addr['address'],
+                    'client_id' => $this->client->id
+                ],
+                [
+                    'type' => $addr['type'] ?? 'actualizado',
+                    'province' => $addr['province'] ?? 'sin datos',
+                    'city' => $addr['city'] ?? 'sin datos',
+                    'is_valid' => 'NO'
+                ]
+            );
         }
     }
 
     protected function processLabours(array $labours): void
     {
         foreach ($labours as $labour) {
-            Work::create([
-                'type' => 'JOB',
-                'address' => $labour['address'],
-                'province' => '',
-                'ruc' => $labour['ruc'],
-                'activities_start_date' => $labour['admissionDate'],
-                'suspension_request_date' => $labour['fireDate'],
-                'legal_name' => $labour['legalName'],
-                'activities_restart_date' => '',
-                'phone' => $labour['phone'],
-                'taxpayer_status' => '',
-                'email' => $labour['email'],
-                'economic_activity' => $labour['position'],
-                'business_name' => $labour['legalName'],
+            if (empty($labour['ruc'])) continue;
+
+            Work::firstOrCreate(
+                [
+                    'ruc' => $labour['ruc'],
+                    'client_id' => $this->client->id
+                ],
+                [
+                    'type' => 'JOB',
+                    'address' => $labour['address'] ?? '',
+                    'province' => '',
+                    'activities_start_date' => $this->parseDate($labour['admissionDate'] ?? ''),
+                    'suspension_request_date' => $this->parseDate($labour['fireDate'] ?? ''),
+                    'legal_name' => $labour['legalName'] ?? '',
+                    'activities_restart_date' => null,
+                    'phone' => $labour['phone'] ?? '',
+                    'taxpayer_status' => '',
+                    'email' => $labour['email'] ?? '',
+                    'economic_activity' => $labour['position'] ?? '',
+                    'business_name' => $labour['legalName'] ?? ''
+                ]
+            );
+        }
+    }
+
+    protected function processEmails(array $emails): void
+    {
+        foreach ($emails as $emailData) {
+            if (empty($emailData['email'])) continue;
+
+            $email = trim(strtolower($emailData['email']));
+
+            // Evitar duplicados de emails
+            Contact::firstOrCreate([
+                'email' => $email,
                 'client_id' => $this->client->id
             ]);
         }
@@ -268,6 +352,19 @@ class ClientDataProcessorService
 
     protected function parseDate(string $date): ?string
     {
-        return !empty($date) ? Carbon::createFromFormat('d/m/Y', $date)->format('Y-m-d') : null;
+        if (empty($date)) {
+            return null;
+        }
+
+        try {
+            return Carbon::createFromFormat('d/m/Y', $date)->format('Y-m-d');
+        } catch (\Exception $e) {
+            // Si falla el formato d/m/Y, intentar otros formatos comunes
+            try {
+                return Carbon::parse($date)->format('Y-m-d');
+            } catch (\Exception $e) {
+                return null;
+            }
+        }
     }
 }
