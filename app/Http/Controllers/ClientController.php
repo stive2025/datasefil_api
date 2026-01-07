@@ -120,11 +120,20 @@ class ClientController extends Controller
         $id->age;
 
         if ($id->parents->isEmpty()) {
-            $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->identification);
-            $contactsData = $datadiver->ConsultData();
+            // Determinar qué cédula usar para la consulta
+            // Si es un menor que usa la cédula del padre, usar parent_identification
+            $dniToQuery = $id->uses_parent_identification && $id->parent_identification
+                ? $id->parent_identification
+                : $id->identification;
 
-            $processor = new ClientDataProcessorService($id);
-            $processor->processDatadiverData($contactsData);
+            // Solo hacer la consulta si tenemos una cédula válida
+            if (!empty($dniToQuery)) {
+                $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $dniToQuery);
+                $contactsData = $datadiver->ConsultData();
+
+                $processor = new ClientDataProcessorService($id);
+                $processor->processDatadiverData($contactsData);
+            }
         }
 
         $id->load(['contacts', 'address', 'parents','works','emails']);
