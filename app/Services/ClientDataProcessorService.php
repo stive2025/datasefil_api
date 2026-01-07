@@ -7,6 +7,7 @@ use App\Models\Relationship;
 use App\Models\Contact;
 use App\Models\Address;
 use App\Models\Work;
+use App\Models\Email;
 use Carbon\Carbon;
 
 class ClientDataProcessorService
@@ -383,11 +384,11 @@ class ClientDataProcessorService
         foreach ($emails as $emailData) {
             if (empty($emailData['email'])) continue;
 
-            $email = trim(strtolower($emailData['email']));
+            $emailAddress = trim(strtolower($emailData['email']));
 
             // Evitar duplicados de emails
-            Contact::firstOrCreate([
-                'email' => $email,
+            Email::firstOrCreate([
+                'direction' => $emailAddress,
                 'client_id' => $this->client->id
             ]);
         }
