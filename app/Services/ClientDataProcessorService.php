@@ -29,9 +29,11 @@ class ClientDataProcessorService
         $works = $data['info_labour']['jobInfoCompany'] ?? [];
 
         //$this->processClient($infoGeneral);
-        $this->processFamilyNames($familyNames);
+        // IMPORTANTE: Procesar primero los que tienen DNI completo
         $this->processFamilyData($familyData);
         $this->processFamilyData($genomeData);
+        // Luego procesar familyNames (que pueden no tener DNI o ya estar creados)
+        $this->processFamilyNames($familyNames);
         $this->processContacts($contacts);
         $this->processEmails($emails);
         $this->processAddresses($addresses);
@@ -123,13 +125,11 @@ class ClientDataProcessorService
             return;
         }
 
-        // Buscar por nombre exacto sin DNI
-        $existingPerson = Client::where('name', $fullname)
-            ->whereNull('identification')
-            ->first();
+        // Buscar por nombre exacto (con o sin DNI)
+        $existingPerson = Client::where('name', $fullname)->first();
 
         if (!$existingPerson) {
-            // Crear nueva persona sin DNI
+            // Solo crear si no existe nadie con ese nombre
             $existingPerson = Client::create([
                 'identification' => null,
                 'name' => $fullname,

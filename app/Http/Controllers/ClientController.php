@@ -119,7 +119,15 @@ class ClientController extends Controller
         $id->load(['contacts', 'address', 'parents']);
         $id->age;
 
-        if ($id->parents->isEmpty()) {
+        // Determinar si necesita consulta externa
+        $needsQuery = $id->parents->isEmpty();
+
+        // Si es un menor que usa cédula del padre, SIEMPRE consultar con la cédula del padre
+        if ($id->uses_parent_identification && $id->parent_identification) {
+            $needsQuery = true;
+        }
+
+        if ($needsQuery) {
             // Determinar qué cédula usar para la consulta
             // Si es un menor que usa la cédula del padre, usar parent_identification
             $dniToQuery = $id->uses_parent_identification && $id->parent_identification
