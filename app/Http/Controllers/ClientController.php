@@ -119,24 +119,36 @@ class ClientController extends Controller
         $id->load(['contacts', 'address', 'parents']);
         $id->age;
 
-        // Determinar si necesita consulta externa
-        $needsQuery = $id->parents->isEmpty();
-
-        // Si es un menor que usa cédula del padre, SIEMPRE consultar con la cédula del padre
+        // Si es un menor que usa cédula del padre, redirigir al padre
         if ($id->uses_parent_identification && $id->parent_identification) {
-            $needsQuery = true;
+            // Buscar al padre/madre por su DNI
+            $parent = Client::where('identification', $id->parent_identification)->first();
+
+            if ($parent) {
+                // Si el padre no tiene datos, consultar
+                if ($parent->parents->isEmpty()) {
+                    $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $parent->identification);
+                    $contactsData = $datadiver->ConsultData();
+
+                    $processor = new ClientDataProcessorService($parent);
+                    $processor->processDatadiverData($contactsData);
+                }
+
+                // Cargar todos los datos del padre
+                $parent->load(['contacts', 'address', 'parents','works','emails']);
+
+                // Devolver la información del padre
+                return response()->json($parent, 200);
+            }
         }
 
-        if ($needsQuery) {
-            // Determinar qué cédula usar para la consulta
-            // Si es un menor que usa la cédula del padre, usar parent_identification
-            $dniToQuery = $id->uses_parent_identification && $id->parent_identification
-                ? $id->parent_identification
-                : $id->identification;
+        // Proceso normal para clientes que no son menores
+        $needsQuery = $id->parents->isEmpty();
 
+        if ($needsQuery) {
             // Solo hacer la consulta si tenemos una cédula válida
-            if (!empty($dniToQuery)) {
-                $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $dniToQuery);
+            if (!empty($id->identification)) {
+                $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->identification);
                 $contactsData = $datadiver->ConsultData();
 
                 $processor = new ClientDataProcessorService($id);
