@@ -12,9 +12,6 @@ use Carbon\Carbon;
 
 class ClientDataProcessorService
 {
-    /**
-     * Create a new class instance.
-     */
     public function __construct(protected Client $client) {}
 
     public function processDatadiverData(array $data): void
@@ -28,11 +25,8 @@ class ClientDataProcessorService
         $addresses = $data['info_contacts']['address'] ?? [];
         $works = $data['info_labour']['jobInfoCompany'] ?? [];
 
-        //$this->processClient($infoGeneral);
-        // IMPORTANTE: Procesar primero los que tienen DNI completo
         $this->processFamilyData($familyData);
         $this->processFamilyData($genomeData);
-        // Luego procesar familyNames (que pueden no tener DNI o ya estar creados)
         $this->processFamilyNames($familyNames);
         $this->processContacts($contacts);
         $this->processEmails($emails);
@@ -44,8 +38,7 @@ class ClientDataProcessorService
     {
         $infoGeneral = $data['info_general'] ?? [];
         $fullname = $infoGeneral['fullname'] ?? null;
-        
-        // Detectar si es un menor usando cédula de padres
+
         $usesParentId = preg_match('/menor\s+de\s+edad\s*\(.*\)/i', $fullname);
 
         $client = Client::updateOrCreate(
@@ -93,17 +86,14 @@ class ClientDataProcessorService
 
     protected function processFamilyNames(array $familyNames): void
     {
-        // Procesar cónyuge
         if (!empty($familyNames['spouse'])) {
             $this->createOrFindPersonWithoutDni($familyNames['spouse'], 'CONYUGE');
         }
 
-        // Procesar padre
         if (!empty($familyNames['dad'])) {
             $this->createOrFindPersonWithoutDni($familyNames['dad'], 'PADRE');
         }
 
-        // Procesar madre
         if (!empty($familyNames['mom'])) {
             $this->createOrFindPersonWithoutDni($familyNames['mom'], 'MADRE');
         }
@@ -115,33 +105,27 @@ class ClientDataProcessorService
 
         if (empty($fullname)) return;
 
-        // Buscar si ya existe una persona con este nombre relacionada con este cliente
         $existingRelationship = Relationship::where('client_id', $this->client->id)
             ->where('type', $relationshipType)
             ->first();
 
         if ($existingRelationship) {
-            // Ya existe una relación de este tipo, no crear duplicado
             return;
         }
 
-        // Buscar por nombre exacto (con o sin DNI)
         $existingPerson = Client::where('name', $fullname)->first();
 
         if (!$existingPerson) {
-            // Solo crear si no existe nadie con ese nombre
             $existingPerson = Client::create([
                 'identification' => null,
                 'name' => $fullname,
             ]);
         }
 
-        // Evitar crear relación del cliente consigo mismo
         if ($existingPerson->id === $this->client->id) {
             return;
         }
 
-        // Crear la relación
         Relationship::firstOrCreate([
             'type' => $relationshipType,
             'relationship_client_id' => $existingPerson->id,
@@ -157,16 +141,11 @@ class ClientDataProcessorService
             $relationshipType = strtoupper($person['relationship'] ?? 'UNKNOWN');
             $fullname = trim($person['fullname'] ?? '');
 
-            // Detectar si es un menor de edad:
-            // 1. El nombre contiene "MENOR DE EDAD" O
-            // 2. Es relación hijo/hija Y (la cédula es la del cliente O la cédula ya existe en DB con otro nombre)
             $isMinorByName = preg_match('/menor\s+de\s+edad/i', $fullname);
             $isChildRelationship = in_array($relationshipType, ['HIJO', 'HIJA']);
 
-            // Para menores, necesitamos verificar si la cédula pertenece a otro familiar
             $isMinor = false;
             if ($isChildRelationship && !empty($person['dni'])) {
-                // Verificar si esta cédula ya existe con un nombre diferente (no es un menor)
                 $existingWithSameDni = Client::where('identification', $person['dni'])
                     ->where('name', '!=', $fullname)
                     ->first();
@@ -177,11 +156,9 @@ class ClientDataProcessorService
                 $isMinor = true;
             }
 
-            // Si no tiene DNI, buscar o crear por nombre
             if (empty($person['dni'])) {
                 if (empty($fullname)) continue;
 
-                // Buscar por nombre (puede haber duplicados, tomar el primero)
                 $existingPerson = Client::where('name', $fullname)
                     ->whereNull('identification')
                     ->first();
@@ -197,24 +174,20 @@ class ClientDataProcessorService
                     ]);
                 }
             } elseif ($isMinor) {
-                // Es un menor de edad que usa cédula de padre/madre
                 if (empty($fullname)) continue;
 
-                // Buscar por nombre y fecha de nacimiento para menores de edad
                 $birthDate = $this->parseDate($person['dateOfBirth'] ?? '');
 
                 $existingPerson = Client::where('name', $fullname)
                     ->where('birth', $birthDate)
-                    ->whereNull('identification') // Solo buscar entre registros sin cédula
+                    ->whereNull('identification')
                     ->first();
 
                 if (!$existingPerson) {
-                    // Determinar de quién es la cédula que está usando
                     $parentDni = $person['dni'];
 
-                    // Crear hijo sin cédula propia
                     $existingPerson = Client::create([
-                        'identification' => null, // Menores de edad sin cédula
+                        'identification' => null,
                         'uses_parent_identification' => true,
                         'parent_identification' => $parentDni,
                         'name' => $fullname,
@@ -225,7 +198,6 @@ class ClientDataProcessorService
                     ]);
                 }
             } else {
-                // Proceso normal para personas con cédula propia
                 $existingPerson = Client::firstOrCreate(
                     ['identification' => $person['dni']],
                     [
@@ -238,27 +210,22 @@ class ClientDataProcessorService
                 );
             }
 
-            // Evitar crear relaciones del cliente consigo mismo
             if ($existingPerson->id === $this->client->id) {
                 continue;
             }
 
-            // Verificar si ya existe CUALQUIER relación entre estos dos clientes
             $existingRelationship = Relationship::where('client_id', $this->client->id)
                 ->where('relationship_client_id', $existingPerson->id)
                 ->first();
 
             if ($existingRelationship) {
-                // Si ya existe una relación, verificar si la nueva es más prioritaria
                 $currentPriority = $this->getRelationshipPriority($existingRelationship->type);
                 $newPriority = $this->getRelationshipPriority($relationshipType);
 
-                // Solo actualizar si la nueva relación tiene mayor prioridad
                 if ($newPriority > $currentPriority) {
                     $existingRelationship->update(['type' => $relationshipType]);
                 }
             } else {
-                // No existe relación, crear una nueva
                 Relationship::create([
                     'type' => $relationshipType,
                     'relationship_client_id' => $existingPerson->id,
@@ -268,14 +235,9 @@ class ClientDataProcessorService
         }
     }
 
-    /**
-     * Determina la prioridad de una relación familiar
-     * Mayor número = mayor prioridad (relaciones más directas)
-     */
     protected function getRelationshipPriority(string $relationshipType): int
     {
         $priorities = [
-            // Relaciones directas - máxima prioridad
             'PADRE' => 100,
             'MADRE' => 100,
             'HIJO' => 100,
@@ -283,18 +245,12 @@ class ClientDataProcessorService
             'ESPOSO' => 100,
             'ESPOSA' => 100,
             'CONYUGE' => 100,
-            
-            // Hermanos - alta prioridad
             'HERMANO' => 80,
             'HERMANA' => 80,
-            
-            // Abuelos y nietos
             'ABUELO' => 70,
             'ABUELA' => 70,
             'NIETO' => 70,
             'NIETA' => 70,
-            
-            // Tíos y sobrinos
             'TIO' => 50,
             'TIA' => 50,
             'TIO PATERNO' => 50,
@@ -303,12 +259,8 @@ class ClientDataProcessorService
             'TIA MATERNA' => 50,
             'SOBRINO' => 50,
             'SOBRINA' => 50,
-            
-            // Primos
             'PRIMO' => 30,
             'PRIMA' => 30,
-            
-            // Otros
             'SUEGRO' => 20,
             'SUEGRA' => 20,
             'YERNO' => 20,
@@ -317,7 +269,7 @@ class ClientDataProcessorService
             'CUÑADA' => 20,
         ];
 
-        return $priorities[$relationshipType] ?? 10; // Default priority para relaciones desconocidas
+        return $priorities[$relationshipType] ?? 10;
     }
 
     protected function processContacts(array $phones): void
@@ -386,7 +338,6 @@ class ClientDataProcessorService
 
             $emailAddress = trim(strtolower($emailData['email']));
 
-            // Evitar duplicados de emails
             Email::firstOrCreate([
                 'direction' => $emailAddress,
                 'client_id' => $this->client->id
@@ -403,7 +354,6 @@ class ClientDataProcessorService
         try {
             return Carbon::createFromFormat('d/m/Y', $date)->format('Y-m-d');
         } catch (\Exception $e) {
-            // Si falla el formato d/m/Y, intentar otros formatos comunes
             try {
                 return Carbon::parse($date)->format('Y-m-d');
             } catch (\Exception $e) {

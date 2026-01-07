@@ -2,24 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Address;
 use App\Models\Client;
-use App\Models\Contact;
-use App\Models\Relationship;
 use App\Services\DatadiverService;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Services\ClientDataProcessorService;
-use DateTime;
 use Illuminate\Support\Facades\Log;
 
 class ClientController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function filtrarDatosVerificados($attributesObj, $verifiedAttributesObj) {
-        // Convertimos stdClass a arrays
         $attributes = (array)$attributesObj;
         $verified_attributes = (array)$verifiedAttributesObj;
 
@@ -51,10 +42,9 @@ class ClientController extends Controller
             ->when(request()->filled('ci'),function($query){
                 $query->where('document',request('ci'));
             })
-            //->take(10000)
             ->orderBy('id','DESC')
             ->get();
-        
+
         $data_clients=[];
 
         foreach($clients as $client){
@@ -71,9 +61,9 @@ class ClientController extends Controller
 
         return $data_clients;
     }
-    
+
     public function index()
-    {   
+    {
         $contacts=Client::with(['contacts','parents.relatedClient','address','emails'])
             ->when(request()->filled('name'),function($query){
                 $query->where('name','REGEXP',request('name'));
@@ -90,7 +80,7 @@ class ClientController extends Controller
                 });
             })
             ->paginate(10);
-        
+
         if(count($contacts)==0 & request()->filled('identification')){
             $datadiver=new DatadiverService(env('ROOT_DATADIVERSERVICE').request('identification'));
             $contacts=$datadiver->ConsultData();
@@ -100,7 +90,6 @@ class ClientController extends Controller
             $processor = ClientDataProcessorService::createClientFromDatadiver($contacts);
             $processor->processDatadiverData($contacts);
 
-            //Devolvemos en el formato solicitado
             $contacts=Client::with(['contacts','parents','address'])
                 ->when(request()->filled('identification'),function($query){
                     $query->where('identification','REGEXP',request('identification'));
@@ -111,32 +100,23 @@ class ClientController extends Controller
         return response()->json($contacts,200);
     }
 
-    /**
-     * Display the specified resource.
-     */
     public function show(Client $id)
     {
         $id->load(['contacts', 'address', 'parents']);
         $id->age;
 
-        // Si es un menor que usa cédula del padre, redirigir al padre
         if ($id->uses_parent_identification && $id->parent_identification) {
-            // Buscar al padre/madre por su DNI
             $parent = Client::where('identification', $id->parent_identification)->first();
 
-            // Si el padre no existe, crear un registro consultando con su DNI
             if (!$parent) {
                 $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->parent_identification);
                 $contactsData = $datadiver->ConsultData();
 
-                // Crear el cliente padre desde los datos obtenidos
                 $processor = ClientDataProcessorService::createClientFromDatadiver($contactsData);
                 $processor->processDatadiverData($contactsData);
 
-                // Obtener el padre recién creado
                 $parent = Client::where('identification', $id->parent_identification)->first();
             } else {
-                // Si el padre existe pero no tiene datos, consultar
                 if ($parent->parents->isEmpty()) {
                     $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $parent->identification);
                     $contactsData = $datadiver->ConsultData();
@@ -147,19 +127,15 @@ class ClientController extends Controller
             }
 
             if ($parent) {
-                // Cargar todos los datos del padre
                 $parent->load(['contacts', 'address', 'parents','works','emails']);
 
-                // Devolver la información del padre
                 return response()->json($parent, 200);
             }
         }
 
-        // Proceso normal para clientes que no son menores
         $needsQuery = $id->parents->isEmpty();
 
         if ($needsQuery) {
-            // Solo hacer la consulta si tenemos una cédula válida
             if (!empty($id->identification)) {
                 $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->identification);
                 $contactsData = $datadiver->ConsultData();
