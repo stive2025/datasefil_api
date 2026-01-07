@@ -124,8 +124,19 @@ class ClientController extends Controller
             // Buscar al padre/madre por su DNI
             $parent = Client::where('identification', $id->parent_identification)->first();
 
-            if ($parent) {
-                // Si el padre no tiene datos, consultar
+            // Si el padre no existe, crear un registro consultando con su DNI
+            if (!$parent) {
+                $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->parent_identification);
+                $contactsData = $datadiver->ConsultData();
+
+                // Crear el cliente padre desde los datos obtenidos
+                $processor = ClientDataProcessorService::createClientFromDatadiver($contactsData);
+                $processor->processDatadiverData($contactsData);
+
+                // Obtener el padre recién creado
+                $parent = Client::where('identification', $id->parent_identification)->first();
+            } else {
+                // Si el padre existe pero no tiene datos, consultar
                 if ($parent->parents->isEmpty()) {
                     $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $parent->identification);
                     $contactsData = $datadiver->ConsultData();
@@ -133,7 +144,9 @@ class ClientController extends Controller
                     $processor = new ClientDataProcessorService($parent);
                     $processor->processDatadiverData($contactsData);
                 }
+            }
 
+            if ($parent) {
                 // Cargar todos los datos del padre
                 $parent->load(['contacts', 'address', 'parents','works','emails']);
 
