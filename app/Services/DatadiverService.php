@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class DatadiverService
 {
@@ -23,21 +24,14 @@ class DatadiverService
         try {
             $response = Http::get($this->server_ip);
             if ($response->successful()) {
-
                 return $response->json();
-
             } else {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Error al obtener los datos',
-                    'code' => $response->status()
-                ], $response->status());
+                Log::error('DatadiverService error: ' . $response->status());
+                return null;
             }
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Excepción: ' . $e->getMessage()
-            ], 500);
+            Log::error('DatadiverService exception: ' . $e->getMessage());
+            return null;
         }
     }
 

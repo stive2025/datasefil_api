@@ -83,18 +83,20 @@ class ClientController extends Controller
 
         if(count($contacts)==0 & request()->filled('identification')){
             $datadiver=new DatadiverService(env('ROOT_DATADIVERSERVICE').request('identification'));
-            $contacts=$datadiver->ConsultData();
+            $contactsData=$datadiver->ConsultData();
 
-            Log::info(json_encode($contacts));
+            if($contactsData !== null) {
+                Log::info(json_encode($contactsData));
 
-            $processor = ClientDataProcessorService::createClientFromDatadiver($contacts);
-            $processor->processDatadiverData($contacts);
+                $processor = ClientDataProcessorService::createClientFromDatadiver($contactsData);
+                $processor->processDatadiverData($contactsData);
 
-            $contacts=Client::with(['contacts','parents','address'])
-                ->when(request()->filled('identification'),function($query){
-                    $query->where('identification','REGEXP',request('identification'));
-                })
-                ->paginate(10);
+                $contacts=Client::with(['contacts','parents','address'])
+                    ->when(request()->filled('identification'),function($query){
+                        $query->where('identification','REGEXP',request('identification'));
+                    })
+                    ->paginate(10);
+            }
         }
 
         return response()->json($contacts,200);
@@ -112,17 +114,21 @@ class ClientController extends Controller
                 $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->parent_identification);
                 $contactsData = $datadiver->ConsultData();
 
-                $processor = ClientDataProcessorService::createClientFromDatadiver($contactsData);
-                $processor->processDatadiverData($contactsData);
+                if ($contactsData !== null) {
+                    $processor = ClientDataProcessorService::createClientFromDatadiver($contactsData);
+                    $processor->processDatadiverData($contactsData);
 
-                $parent = Client::where('identification', $id->parent_identification)->first();
+                    $parent = Client::where('identification', $id->parent_identification)->first();
+                }
             } else {
                 if ($parent->parents->isEmpty()) {
                     $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $parent->identification);
                     $contactsData = $datadiver->ConsultData();
 
-                    $processor = new ClientDataProcessorService($parent);
-                    $processor->processDatadiverData($contactsData);
+                    if ($contactsData !== null) {
+                        $processor = new ClientDataProcessorService($parent);
+                        $processor->processDatadiverData($contactsData);
+                    }
                 }
             }
 
@@ -140,8 +146,10 @@ class ClientController extends Controller
                 $datadiver = new DatadiverService(env('ROOT_DATADIVERSERVICE') . $id->identification);
                 $contactsData = $datadiver->ConsultData();
 
-                $processor = new ClientDataProcessorService($id);
-                $processor->processDatadiverData($contactsData);
+                if ($contactsData !== null) {
+                    $processor = new ClientDataProcessorService($id);
+                    $processor->processDatadiverData($contactsData);
+                }
             }
         }
 
