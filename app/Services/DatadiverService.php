@@ -22,7 +22,10 @@ class DatadiverService
     
     public function ConsultData(){
         try {
-            $response = Http::get($this->server_ip);
+            $response = Http::withOptions([
+                'connect_timeout' => 10,
+                'timeout' => 60,
+            ])->get($this->server_ip);
             if ($response->successful()) {
                 return $response->json();
             } else {
